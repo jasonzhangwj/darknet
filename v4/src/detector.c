@@ -4,7 +4,7 @@
 #include "region_layer.h"
 #include "cost_layer.h"
 #include "utils.h"
-#include "parser.h"
+#include "parser.h" 
 #include "box.h"
 #include "demo.h"
 #include "option_list.h"
@@ -1550,7 +1550,7 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
     list *options = read_data_cfg(datacfg);
     char *name_list = option_find_str(options, "names", "data/names.list");
     int names_size = 0;
-    char **names = get_labels_custom(name_list, &names_size); //get_labels(name_list);
+    char **names = get_labels_custom(name_list, &names_size); //get_labels(name_list)
 
     image **alphabet = load_alphabet();
     network net = parse_network_cfg_custom(cfgfile, 1, 1); // set batch=1
@@ -1621,8 +1621,27 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
             if (l.nms_kind == DEFAULT_NMS) do_nms_sort(dets, nboxes, l.classes, nms);
             else diounms_sort(dets, nboxes, l.classes, nms, l.nms_kind, l.beta_nms);
         }
-        draw_detections_v3(im, dets, nboxes, thresh, names, alphabet, l.classes, ext_output);
-        save_image(im, "predictions");
+       //added by ztxy
+        int k;
+        int z;
+        int index = 0;
+        char *p =(char *)malloc(0);
+        k = strlen(filename);
+        for(z = k -9;z < k-4; z++)
+         {    
+          p[index++] =  filename[z];
+          if(z == k-5)
+              p[index++] = '\0';
+         }
+        printf('++++++++++++++===%s',p);
+        //以上功能：图像名称的截取
+        draw_detections_v3(im, dets, nboxes, thresh, names, alphabet, l.classes, ext_output,p);
+        char b[2048];
+        sprintf(b,"out/%s",p);
+        free(p);
+        p = NULL;
+        save_image(im, "results//predictions");
+
         if (!dont_show) {
             show_image(im, "predictions");
         }
@@ -1808,7 +1827,7 @@ void draw_object(char *datacfg, char *cfgfile, char *weightfile, char *filename,
         quantize_image(sized);
         network_predict(net, X);
 
-        save_image_png(sized, "drawn");
+        save_image_png(sized, "results//drawn");
         //sized = load_image("drawn.png", 0, 0, net.c);
 
         int nboxes = 0;
@@ -1817,8 +1836,9 @@ void draw_object(char *datacfg, char *cfgfile, char *weightfile, char *filename,
             if (l.nms_kind == DEFAULT_NMS) do_nms_sort(dets, nboxes, l.classes, nms);
             else diounms_sort(dets, nboxes, l.classes, nms, l.nms_kind, l.beta_nms);
         }
-        draw_detections_v3(sized, dets, nboxes, thresh, names, alphabet, l.classes, 1);
-        save_image(sized, "pre_predictions");
+        draw_detections_v3(sized, dets, nboxes, thresh, names, alphabet, l.classes, 1,filename);
+
+        save_image(sized, "results//pre_predictions");
         if (!dont_show) {
             show_image(sized, "pre_predictions");
         }

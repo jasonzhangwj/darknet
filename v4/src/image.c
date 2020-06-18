@@ -133,7 +133,7 @@ image get_label_v3(image **characters, char *string, int size)
         label = n;
         ++string;
     }
-    image b = border_image(label, label.h*.25);
+    image b = border_image(label, label.h*.05);
     free_image(label);
     return b;
 }
@@ -150,6 +150,25 @@ void draw_label(image a, int r, int c, image label, const float *rgb)
             for(k = 0; k < label.c; ++k){
                 float val = get_pixel(label, i, j, k);
                 set_pixel(a, i+c, j+r, k, rgb[k] * val);
+            }
+        }
+    }
+}
+
+void draw_weighted_label(image a, int r, int c, image label, const float *rgb, const float alpha)
+{
+    int w = label.w;
+    int h = label.h;
+    if (r - h >= 0) r = r - h;
+
+    int i, j, k;
+    for (j = 0; j < h && j + r < a.h; ++j) {
+        for (i = 0; i < w && i + c < a.w; ++i) {
+            for (k = 0; k < label.c; ++k) {
+                float val1 = get_pixel(label, i, j, k);
+                float val2 = get_pixel(a, i + c, j + r, k);
+                float val_dst = val1 * rgb[k] * alpha + val2 * (1 - alpha);
+                set_pixel(a, i + c, j + r, k, val_dst);
             }
         }
     }
@@ -307,11 +326,10 @@ int compare_by_probs(const void *a_ptr, const void *b_ptr) {
     return delta < 0 ? -1 : delta > 0 ? 1 : 0;
 }
 
-void draw_detections_v3(image im, detection *dets, int num, float thresh, char **names, image **alphabet, int classes, int ext_output)
+void draw_detections_v3(image im, detection *dets, int num, float thresh, char **names, image **alphabet, int classes, int ext_output, char *filename)
 {
     static int frame_id = 0;
     frame_id++;
-
     int selected_detections_num;
     detection_with_class* selected_detections = get_actual_detections(dets, num, thresh, &selected_detections_num, names);
 
@@ -332,7 +350,7 @@ void draw_detections_v3(image im, detection *dets, int num, float thresh, char *
         for (j = 0; j < classes; ++j) {
             if (selected_detections[i].det.prob[j] > thresh && j != best_class) {
                 printf("%s: %.0f%%", names[j], selected_detections[i].det.prob[j] * 100);
-
+                printf("==================================");
                 if (ext_output)
                     printf("\t(left_x: %4.0f   top_y: %4.0f   width: %4.0f   height: %4.0f)\n",
                         round((selected_detections[i].det.bbox.x - selected_detections[i].det.bbox.w / 2)*im.w),
@@ -347,7 +365,7 @@ void draw_detections_v3(image im, detection *dets, int num, float thresh, char *
     // image output
     qsort(selected_detections, selected_detections_num, sizeof(*selected_detections), compare_by_probs);
     for (i = 0; i < selected_detections_num; ++i) {
-            int width = im.h * .006;
+            int width = im.h * .002;
             if (width < 1)
                 width = 1;
 
@@ -410,8 +428,13 @@ void draw_detections_v3(image im, detection *dets, int num, float thresh, char *
                 draw_box_width_bw(im, left, top, right, bot, width, 0.8);    // 1 channel Black-White
             }
             else {
-                draw_box_width(im, left, top, right, bot, width, red, green, blue); // 3 channels RGB
+//added by ztxy
+               int the_class = selected_detections[i].best_class;
+               graph_cut(im, left, top, right, bot, names, the_class, i,filename);  //added by ztxy
+             draw_box_width(im, left, top, right, bot, width, red, green, blue); // 3 channels RGB
             }
+
+
             if (alphabet) {
                 char labelstr[4096] = { 0 };
                 strcat(labelstr, names[selected_detections[i].best_class]);
@@ -422,8 +445,9 @@ void draw_detections_v3(image im, detection *dets, int num, float thresh, char *
                         strcat(labelstr, names[j]);
                     }
                 }
-                image label = get_label_v3(alphabet, labelstr, (im.h*.03));
-                draw_label(im, top + width, left, label, rgb);
+                image label = get_label_v3(alphabet, labelstr, (im.h*.02));
+                //draw_label(im, top + width, left, label, rgb);
+                draw_weighted_label(im, top + width, left, label, rgb, 0.7);
                 free_image(label);
             }
             if (selected_detections[i].det.mask) {
@@ -758,6 +782,7 @@ void show_image_collapsed(image p, char *name)
     free_image(c);
 }
 
+//功能：制作指定大小的空图片
 image make_empty_image(int w, int h, int c)
 {
     image out;
@@ -768,11 +793,12 @@ image make_empty_image(int w, int h, int c)
     return out;
 }
 
+//功能：制作图片（宽，高，通道）-----开辟指定图片的空间
 image make_image(int w, int h, int c)
 {
     image out = make_empty_image(w,h,c);
-    out.data = (float*)xcalloc(h * w * c, sizeof(float));
-    return out;
+    out.data = (float*)xcalloc(h * w * c, sizeof(float));//为动态data开辟指定的空间，并且自动回收----但是这儿多了x，需要编译的时候看下他的作用
+    return out;//返回开辟好的空间
 }
 
 image make_random_image(int w, int h, int c)
@@ -1681,3 +1707,40 @@ LIB_API void copy_image_from_bytes(image im, char *pdata)
         }
     }
 }
+
+//added by ztxy
+void graph_cut(image a, int x1, int y1, int x2, int y2,char **names,int the_class,int no,char *f)
+{
+     int z = 0;
+     char buff[256];
+//此处修改文件夹的路径
+     sprintf(buff, "%s//%s_%d", names[the_class] ,f,no);
+     printf("=====================buff=buff=======================%s",buff);
+    //normalize_image(a);
+    int i;
+    int j;
+   //判断坐标的位置，要在图像的范围内
+    if(x1 < 0) x1 = 0;
+    if(x1 >= a.w) x1 = a.w-1;
+    if(x2 < 0) x2 = 0;
+    if(x2 >= a.w) x2 = a.w-1;
+
+    if(y1 < 0) y1 = 0;
+    if(y1 >= a.h) y1 = a.h-1;
+    if(y2 < 0) y2 = 0;
+    if(y2 >= a.h) y2 = a.h-1;
+	
+    int w=x2-x1;
+    int h=y2-y1;
+	
+    image r = make_image(w,h,a.c);//开辟指定宽高的空间
+
+    for(j = y1; j < y2; j++)
+        for(i=x1; i<x2; i++){
+            r.data[(j-y1)*w+(i-x1)+0*h*w]= a.data[i+j*a.w+0*a.h*a.w];
+            r.data[(j-y1)*w+(i-x1)+1*h*w]= a.data[i+j*a.w+1*a.h*a.w];
+            r.data[(j-y1)*w+(i-x1)+2*h*w]= a.data[i+j*a.w+2*a.h*a.w];
+        }//逐个给开辟空间的对应位置赋值
+    save_image(r, buff);
+}
+ //r.data：float的指针类型
